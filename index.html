@@ -10,6 +10,7 @@ const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 const CHARGE_DURATION_MS = 2000; // how long you have to spam-tap
 const TAPS_FOR_MAX_POWER = 30; // taps in the window for full power
 
+// Using a simple stickman Ptit instead of an external image
 
 const StarJumperMobile = () => {
   const [isCharging, setIsCharging] = useState(false);
@@ -292,9 +293,9 @@ const StarJumperMobile = () => {
             </div>
           </div>
 
-          {/* Ptit stickman + helper, closer to tree, vertically offset for jump */}
+          {/* Ptit stickman + helper, RIGHT next to the tree, vertically offset for jump */}
           <div
-            className="absolute left-[40%] bottom-4 flex flex-col items-center transition-transform duration-75"
+            className="absolute left-[30%] bottom-4 flex flex-col items-center transition-transform duration-75"
             style={{ transform: `translateY(-${ptitOffsetY}px)` }}
           >
             <div className="relative flex flex-col items-center">
@@ -324,7 +325,9 @@ const StarJumperMobile = () => {
                   <div className="w-4 h-[2px] bg-slate-100 -rotate-12 origin-left" />
                   {/* arm holding eggplant */}
                   <div className="relative w-4 h-[2px] bg-slate-100 rotate-12 origin-right flex items-center justify-end">
-                    <span className="absolute right-[-6px] text-xl leading-none drop-shadow">🍆</span>
+                    <span className="absolute right-[-6px] text-xl leading-none drop-shadow">
+                      🍆
+                    </span>
                   </div>
                 </div>
                 {/* legs */}
@@ -338,7 +341,6 @@ const StarJumperMobile = () => {
               Ptit
             </div>
           </div>
-
 
           {/* Tap hint */}
           <div className="absolute inset-x-0 top-2 flex justify-center">
@@ -369,8 +371,7 @@ const StarJumperMobile = () => {
           {lastResult && (
             <div className="text-[11px] text-slate-300 flex justify-between">
               <span>
-                Last jump: {lastResult.height}% height –
-                {" "}
+                Last jump: {lastResult.height}% height –{" "}
                 {lastResult.success
                   ? "eggplant on top!"
                   : "not quite crowned yet"}
@@ -463,44 +464,3 @@ const StarJumperMobile = () => {
 
           {showLeaderboard && (
             <div className="mt-2">
-              {scores.length === 0 ? (
-                <div className="text-[10px] text-slate-400">
-                  Hit a 100% jump to appear here. Only perfect eggplant crowns are saved
-                  on this device.
-                </div>
-              ) : (
-                <div className="space-y-1 max-h-32 overflow-auto pr-1">
-                  {scores.map((entry, index) => (
-                    <div
-                      key={entry.id}
-                      className="flex items-center justify-between rounded-xl px-2 py-1 bg-slate-950/70 border border-slate-700/70"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="text-[10px] text-slate-400 w-4 text-right">
-                          #{index + 1}
-                        </span>
-                        <span className="truncate font-medium">
-                          {entry.name}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-[10px]">
-                        <span>{entry.height}%</span>
-                        <span className="text-amber-300">🍆</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="text-[9px] text-slate-500 text-center">
-          Tap the game area to play. Works best in portrait mode.
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default StarJumperMobile;
