@@ -34,7 +34,7 @@ https://chickenfilet.github.io/PoorPtit/<!DOCTYPE html>
       const clamp = (value, min, max) => Math.min(max, Math.max(min, value));
 
       const CHARGE_DURATION_MS = 2000; // how long you have to spam-tap
-      const TAPS_FOR_MAX_POWER = 30; // taps in the window for full power
+      const TAPS_FOR_MAX_POWER = 40; // taps in the window for full power
 
       // ===== Firebase setup (NOW global & correct) =====
       const firebaseConfig = {
@@ -215,7 +215,7 @@ https://chickenfilet.github.io/PoorPtit/<!DOCTYPE html>
           setReachedTop(false);
 
           const heightPercent = Math.round(finalPower * 100);
-          const success = finalPower >= 0.95; // threshold to "reach" the top of the tree
+          const success = finalPower >= 0.9; // threshold to "reach" the top of the tree
 
           const nameForScore = (playerName || "Anonymous").trim();
           const newEntry = {
