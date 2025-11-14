@@ -20,7 +20,8 @@
 
     <!-- Babel to compile JSX in the browser -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-      <!-- Firebase compat SDKs for single-file simplicity -->
+
+    <!-- Firebase compat SDKs for single-file simplicity -->
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
   </head>
@@ -34,7 +35,24 @@
 
       const CHARGE_DURATION_MS = 2000; // how long you have to spam-tap
       const TAPS_FOR_MAX_POWER = 30; // taps in the window for full power
-      const STORAGE_KEY = "star-jumper-scores";
+
+      // ===== Firebase setup (NOW global & correct) =====
+      const firebaseConfig = {
+        apiKey: "AIzaSyDDf_4ZwQSqoOPPYI240kmUL2D1QEDHTSs",
+        authDomain: "svgscience-6bb49.firebaseapp.com",
+        projectId: "svgscience-6bb49",
+        storageBucket: "svgscience-6bb49.firebasestorage.app",
+        messagingSenderId: "493468414507",
+        appId: "1:493468414507:web:fc5b8eaa2ea72763d3706e",
+        measurementId: "G-2TW8KPGW6L",
+      };
+
+      if (!firebase.apps.length) {
+        firebase.initializeApp(firebaseConfig);
+      }
+      const db = firebase.firestore();
+      // use the score_ptit collection that matches your rules
+      const scoresRef = db.collection("score_ptit");
 
       function StarJumperMobile() {
         const [isCharging, setIsCharging] = useState(false);
@@ -49,47 +67,42 @@
         const [treeBurned, setTreeBurned] = useState(false);
 
         const [playerName, setPlayerName] = useState("");
-        const [scores, setScores] = useState([]); // best score per name
+        const [scores, setScores] = useState([]); // best score per name from Firestore
         const [lastResult, setLastResult] = useState(null);
         const [hasHelper, setHasHelper] = useState(false);
 
         const [timeLeft, setTimeLeft] = useState(0);
-        const [showLeaderboard, setShowLeaderboard] = useState(false);
+        const [showLeaderboard, setShowLeaderboard] = useState(false); // hidden by default
 
         const chargeTimeoutRef = useRef(null);
         const chargeEndRef = useRef(null);
         const tapCountRef = useRef(0);
         const jumpAnimationRef = useRef(null);
-    // ===== Firebase setup (REPLACE with your config) =====
-        const firebaseConfig={
-          apiKey:"AIzaSyDDf_4ZwQSqoOPPYI240kmUL2D1QEDHTSs",
-          authDomain:"svgscience-6bb49.firebaseapp.com",
-          projectId:"svgscience-6bb49",
-          storageBucket:"svgscience-6bb49.firebasestorage.app",
-          messagingSenderId:"493468414507",
-          appId:"1:493468414507:web:fc5b8eaa2ea72763d3706e",
-          measurementId: "G-2TW8KPGW6L"
-        };
-        firebase.initializeApp(firebaseConfig);
-        const db=firebase.firestore();
-        const scoresRef=db.collection("scores_siteB");
-    
-        const Card=({children,className=""})=> (
-          <div className={`rounded-2xl shadow-lg bg-white p-4 ${className}`}>{children}</div>
-        );
-        const Button=({children,onClick,disabled,className=""})=> (
-          <button
-            onClick={onClick}
-            disabled={disabled}
-            className={`w-full rounded-2xl px-4 py-3 font-semibold shadow ${
-              disabled
-                ? "bg-gray-300 text-gray-500"
-                : "bg-indigo-600 text-white active:translate-y-[1px]"
-            } ${className}`}
-          >
-            {children}
-          </button>
-        );
+
+        // ===== Real-time Firestore leaderboard subscription =====
+        useEffect(() => {
+          const unsubscribe = scoresRef
+            .orderBy("score", "desc")
+            .limit(50)
+            .onSnapshot(
+              (snapshot) => {
+                const docs = snapshot.docs.map((doc) => {
+                  const d = doc.data() || {};
+                  return {
+                    name: d.name || "Anonymous",
+                    height: typeof d.score === "number" ? d.score : 0,
+                    success: !!d.hit,
+                  };
+                });
+                setScores(docs);
+              },
+              (err) => {
+                console.error("Error listening to leaderboard:", err);
+              }
+            );
+
+          return () => unsubscribe();
+        }, []);
 
         // Countdown for the tapping window
         useEffect(() => {
@@ -171,30 +184,23 @@
           }
         };
 
-        const updateLeaderboard = (entry) => {
-          const nameKey = entry.name.trim().toLowerCase();
-          setScores((prev) => {
-            const existingIndex = prev.findIndex(
-              (e) => e.name.trim().toLowerCase() === nameKey
-            );
+        // Write score to Firestore (global leaderboard)
+        const writeScoreToFirestore = async (entry) => {
+          const nameForScore = entry.name || "Anonymous";
+          const playerId = nameForScore.trim().toLowerCase() || "anonymous";
 
-            // No existing score for this name -> add
-            if (existingIndex === -1) {
-              const combined = [...prev, entry];
-              combined.sort((a, b) => b.height - a.height);
-              return combined;
-            }
-
-            // Existing score: only overwrite if new one is better
-            if (entry.height <= prev[existingIndex].height) {
-              return prev;
-            }
-
-            const updated = [...prev];
-            updated[existingIndex] = entry;
-            updated.sort((a, b) => b.height - a.height);
-            return updated;
-          });
+          try {
+            await scoresRef.doc(playerId).set({
+              name: nameForScore,
+              score: entry.height,
+              picks: [], // required by your rules, list with <= 2 items
+              ts: firebase.firestore.FieldValue.serverTimestamp(),
+              hit: entry.success,
+            });
+            // Firestore rules will reject if score < previous score
+          } catch (err) {
+            console.error("Error writing score:", err);
+          }
         };
 
         const triggerJump = (rawPower) => {
@@ -231,8 +237,8 @@
             setTreeBurned(true);
           }
 
-          // Update leaderboard for this name (all scores, best only)
-          updateLeaderboard(newEntry);
+          // Firestore global leaderboard (best per name enforced by rules & docId)
+          writeScoreToFirestore(newEntry);
         };
 
         const startCharging = () => {
@@ -297,12 +303,8 @@
           ? clamp(tapCount / TAPS_FOR_MAX_POWER, 0, 1)
           : powerSnapshot;
 
-        const treeLeafClass = treeBurned
-          ? "bg-red-700"
-          : "bg-emerald-700";
-        const treeTrunkClass = treeBurned
-          ? "bg-amber-950"
-          : "bg-amber-900";
+        const treeLeafClass = treeBurned ? "bg-red-700" : "bg-emerald-700";
+        const treeTrunkClass = treeBurned ? "bg-amber-950" : "bg-amber-900";
 
         return (
           <div className="min-h-screen w-full bg-gradient-to-b from-slate-900 via-slate-950 to-black text-slate-50 flex items-center justify-center px-3 py-4">
@@ -310,11 +312,15 @@
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h1 className="text-xl font-bold tracking-tight flex items-center gap-2">
-                    <span>Why OBF doesnt have a xmas tree. THANKS RAYANE FOR NOTHING!!!🐦‍🔥</span>
+                    <span>
+                      Why OBF doesnt have a xmas tree. THANKS RAYANE FOR
+                      NOTHING!!!🐦‍🔥
+                    </span>
                     <span className="text-lg">🎄🌟</span>
                   </h1>
                   <p className="text-xs text-slate-300 mt-0.5">
-                    Tap as fast as you can to charge Ptit's jump and try to crown the tree with an eggplant.
+                    Tap as fast as you can to charge Ptit's jump and try to
+                    crown the tree with an eggplant.
                   </p>
                 </div>
                 <div className="text-right text-[10px] text-slate-400">
@@ -376,7 +382,9 @@
                     {hasHelper && (
                       <div className="absolute -top-5 -right-4 flex flex-col items-center text-[10px] text-slate-100">
                         <div className="w-4 h-4 rounded-full bg-fuchsia-400/90 border border-fuchsia-100" />
-                        <div className="mt-0.5">HA YOU GOT SCAMMED!!!!!!🐥</div>
+                        <div className="mt-0.5">
+                          HA YOU GOT SCAMMED!!!!!!🐥
+                        </div>
                       </div>
                     )}
 
@@ -518,7 +526,6 @@
                     </div>
                     <p className="text-slate-300 mt-0.5">
                       Get a jump buff - pay me.
-              
                     </p>
                   </div>
                 </div>
@@ -549,77 +556,82 @@
                   promises, no guarantees that it actually helps with your
                   score.
                 </p>
-                <p className="text-[10px] text-slate-500">
-                  SEND MONEY
-                </p>
+                <p className="text-[10px] text-slate-500">SEND MONEY</p>
               </div>
 
-              {/* Player name + toggleable leaderboard (best score per name) */}
-              <div className="rounded-2xl border border-slate-700 bg-slate-900/80 p-3 space-y-3 text-[11px]">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
+              {/* Player name + toggleable leaderboard (best score per name, on the right) */}
+              <div className="rounded-2xl border border-slate-700 bg-slate-900/80 p-3 text-[11px]">
+                <div className="flex flex-col sm:flex-row gap-3 sm:items-start">
+                  {/* Left side: description */}
+                  <div className="flex-1">
                     <div className="font-semibold">Your leaderboard name</div>
                     <p className="text-slate-300 mt-0.5">
                       Ptit stays Ptit on screen, but here you can show who is
                       behind the jump.
                     </p>
                   </div>
-                  <div className="w-full max-w-[180px]">
+
+                  {/* Right side: input + leaderboard */}
+                  <div className="w-full sm:w-1/2 flex flex-col items-end gap-2">
+                    {/* Name input on the right */}
                     <input
                       type="text"
                       value={playerName}
                       onChange={(e) => setPlayerName(e.target.value)}
                       placeholder="Your name"
-                      className="w-full px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-600 text-[11px] outline-none focus:ring-1 focus:ring-sky-500"
+                      className="w-full px-2 py-1.5 rounded-xl bg-slate-950 border border-slate-600 text-[11px] outline-none focus:ring-1 focus:ring-sky-500 text-right"
                       maxLength={20}
                     />
-                  </div>
-                </div>
 
-                <div className="flex items-center justify-between mt-1">
-                  <span className="font-semibold">Best jumps leaderboard</span>
-                  <button
-                    type="button"
-                    onClick={() => setShowLeaderboard((v) => !v)}
-                    className="px-2 py-1 rounded-full bg-slate-800 border border-slate-600 text-[10px]"
-                  >
-                    {showLeaderboard ? "Hide" : "Show"}
-                  </button>
-                </div>
+                    {/* Toggle button aligned right, leaderboard hidden by default */}
+                    <div className="flex items-center justify-end w-full mt-1">
+                      <button
+                        type="button"
+                        onClick={() => setShowLeaderboard((v) => !v)}
+                        className="px-2 py-1 rounded-full bg-slate-800 border border-slate-600 text-[10px]"
+                      >
+                        {showLeaderboard
+                          ? "Hide leaderboard"
+                          : "Show leaderboard"}
+                      </button>
+                    </div>
 
-                {showLeaderboard && (
-                  <div className="mt-2">
-                    {scores.length === 0 ? (
-                      <div className="text-[10px] text-slate-400">
-                        Will you be a loser or a winner?
-                      </div>
-                    ) : (
-                      <div className="space-y-1 max-h-32 overflow-auto pr-1">
-                        {scores.map((entry, index) => (
-                          <div
-                            key={entry.name}
-                            className="flex items-center justify-between rounded-xl px-2 py-1 bg-slate-950/70 border border-slate-700/70"
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <span className="text-[10px] text-slate-400 w-4 text-right">
-                                #{index + 1}
-                              </span>
-                              <span className="truncate font-medium">
-                                {entry.name}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-2 text-[10px]">
-                              <span>{entry.height}%</span>
-                              {entry.success && (
-                                <span className="text-amber-300">🍆</span>
-                              )}
-                            </div>
+                    {/* Leaderboard content, also on right */}
+                    {showLeaderboard && (
+                      <div className="mt-1 w-full">
+                        {scores.length === 0 ? (
+                          <div className="text-[10px] text-slate-400 text-right">
+                            Will you be a loser or a winner?
                           </div>
-                        ))}
+                        ) : (
+                          <div className="space-y-1 max-h-32 overflow-auto pr-1">
+                            {scores.map((entry, index) => (
+                              <div
+                                key={entry.name}
+                                className="flex items-center justify-between rounded-xl px-2 py-1 bg-slate-950/70 border border-slate-700/70"
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="text-[10px] text-slate-400 w-4 text-right">
+                                    #{index + 1}
+                                  </span>
+                                  <span className="truncate font-medium">
+                                    {entry.name}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 text-[10px]">
+                                  <span>{entry.height}%</span>
+                                  {entry.success && (
+                                    <span className="text-amber-300">🍆</span>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
+                </div>
               </div>
 
               <div className="text-[9px] text-slate-500 text-center">
